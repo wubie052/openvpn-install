@@ -24,17 +24,25 @@ elif [[ -e /etc/debian_version ]]; then
 	os="debian"
 	os_version=$(grep -oE '[0-9]+' /etc/debian_version | head -1)
 	group_name="nogroup"
-elif [[ -e /etc/almalinux-release || -e /etc/rocky-release || -e /etc/centos-release ]]; then
-	os="centos"
-	os_version=$(grep -shoE '[0-9]+' /etc/almalinux-release /etc/rocky-release /etc/centos-release | head -1)
-	group_name="nobody"
+elif [[ -e /etc/almalinux-release ]] || [[ -e /etc/rocky-release ]] || [[ -e /etc/centos-release ]] || grep -q '^ID="opencloudos"$' /etc/os-release; then
+    os="centos" # Ecological compatibility
+    if [[ -e /etc/centos-release ]]; then
+        os_version=$(grep -oE '[0-9]+' /etc/centos-release | head -1)
+    elif grep -q '^ID="opencloudos"$' /etc/os-release; then
+        # Extract the major version number "9" from VERSION_ID="9.4"
+        os_version=$(grep '^VERSION_ID=' /etc/os-release | cut -d '"' -f 2 | cut -d '.' -f 1)
+    else
+        # AlmaLinux or Rocky Linux
+        os_version=$(grep -shoE '[0-9]+' /etc/almalinux-release /etc/rocky-release 2>/dev/null | head -1)
+    fi
+    group_name="nobody"
 elif [[ -e /etc/fedora-release ]]; then
 	os="fedora"
 	os_version=$(grep -oE '[0-9]+' /etc/fedora-release | head -1)
 	group_name="nobody"
 else
 	echo "This installer seems to be running on an unsupported distribution.
-Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS and Fedora."
+Supported distros are Ubuntu, Debian, AlmaLinux, Rocky Linux, CentOS, Fedora and OpenCloudOS."
 	exit
 fi
 
@@ -57,8 +65,20 @@ This version of Debian is too old and unsupported."
 fi
 
 if [[ "$os" == "centos" && "$os_version" -lt 9 ]]; then
-	os_name=$(sed 's/ release.*//' /etc/almalinux-release /etc/rocky-release /etc/centos-release 2>/dev/null | head -1)
+    # Prioritize obtaining NAME and PRETTY_NAME from /etc/os-release (applicable to CentOS, Rocky, Alma, OpenCloudOS, etc.)
+    if [[ -f /etc/os-release ]]; then
+        os_name=$(grep '^NAME=' /etc/os-release | cut -d '"' -f 2)
+        os_fullname=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d '"' -f 2)
+    else
+        # Roll back to the old mode (only for very old systems)
+        os_name=$(sed 's/ release.*//' /etc/almalinux-release /etc/rocky-release /etc/centos-release 2>/dev/null | head -1)
+        os_fullname=$(sed 's/ release.*//' /etc/almalinux-release /etc/rocky-release /etc/centos-release 2>/dev/null | head -1)
+    fi
+    if [[ -z "$os_name" ]]; then
+        os_name="Unknown OS"
+    fi
 	echo "$os_name 9 or higher is required to use this installer.
+You are currently running: $os_fullname.
 This version of $os_name is too old and unsupported."
 	exit
 fi
